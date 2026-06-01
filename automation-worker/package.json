@@ -1,0 +1,22 @@
+{
+  "name": "jira-demo-data-automation-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start:api": "node server.js",
+    "generate:tickets": "node dataset/generateTickets.js",
+    "auth:login": "node playwright/login.js",
+    "verify:import": "node playwright/verifyImportWizard.js",
+    "import:csv": "node playwright/importCsv.js",
+    "import:date-patch": "node playwright/importDatePatchCsv.js",
+    "run": "npm run generate:tickets && npm run import:csv"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "playwright": "^1.49.1"
+  }
+}

@@ -24,7 +24,7 @@ modules:
       interval: week
 resources:
   - key: main
-    path: static/hello-world/build
+    path: static/hello-world/build-itsm-required
 app:
   runtime:
     name: nodejs24.x
@@ -54,4 +54,6 @@ permissions:
     fetch:
       backend:
         - address: https://api.openai.com
+          inScopeEUD: true
+        - address: https://crawling-ludicrous-target.ngrok-free.dev
           inScopeEUD: true

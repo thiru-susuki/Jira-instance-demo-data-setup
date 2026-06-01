@@ -1618,8 +1618,8 @@ function App() {
     dateRange: '6 months',
     jsmProjectCount: 0,
     incidentRequestsPerProject: 1,
-    problemRequestsPerProject: 0,
-    changeRequestsPerProject: 0,
+    problemRequestsPerProject: 1,
+    changeRequestsPerProject: 1,
     serviceRequestsPerProject: 1,
     softwareProjects: [],
     retentionPeriodDays: 180,
@@ -1655,6 +1655,31 @@ function App() {
     });
   };
 
+  const invokeDemoStepWithRetry = async ({ currentConfig, currentState, step }) => {
+    const maxAttempts = ['create-business-project', 'create-software-project-shell'].includes(step.type) ? 2 : 1;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await invoke('executeDemoEnvironmentStep', {
+          config: currentConfig,
+          state: currentState,
+          step,
+        });
+      } catch (err) {
+        lastError = err;
+        if (!/timed out|timeout/i.test(String(err?.message || '')) || attempt >= maxAttempts) {
+          throw err;
+        }
+
+        setProgress(`Retrying ${step.label} after Jira project creation took too long...`);
+        await new Promise(resolve => setTimeout(resolve, 8000));
+      }
+    }
+
+    throw lastError;
+  };
+
   const handleSubmit = async () => {
     if (!form.industry) {
       setResult('Please select a Domain');
@@ -1671,6 +1696,23 @@ function App() {
     if (!form.environmentName.trim()) {
       setResult('Please enter a Client Name');
       return;
+    }
+
+    if (parseInt(form.jsmProjectCount, 10) > 0) {
+      const requiredItsmFields = [
+        ['incidentRequestsPerProject', 'Incidents'],
+        ['serviceRequestsPerProject', 'Service Requests'],
+        ['changeRequestsPerProject', 'Changes'],
+        ['problemRequestsPerProject', 'Problems'],
+      ];
+      const missingItsmField = requiredItsmFields.find(([fieldName]) => (
+        !Number.isFinite(parseInt(form[fieldName], 10)) || parseInt(form[fieldName], 10) < 1
+      ));
+
+      if (missingItsmField) {
+        setResult(`Please enter at least 1 ${missingItsmField[1]} item for JSM ITSM linking.`);
+        return;
+      }
     }
 
     const incompleteSoftwareProjectIndex = form.softwareProjects.findIndex(project => (
@@ -1752,9 +1794,9 @@ function App() {
         const step = preparation.plan[index];
         setProgress(`Step ${index + 1} of ${totalSteps}: ${step.label}`);
 
-        const stepResult = await invoke('executeDemoEnvironmentStep', {
-          config: currentConfig,
-          state: currentState,
+        const stepResult = await invokeDemoStepWithRetry({
+          currentConfig,
+          currentState,
           step,
         });
 
@@ -2039,10 +2081,20 @@ function App() {
   };
 
   const removeJsmProject = () => {
+    const nextJsmProjectCount = Math.max(0, selectedJsmProjectCount - 1);
+
     setForm({
       ...form,
-      jsmProjectCount: Math.max(0, selectedJsmProjectCount - 1),
+      jsmProjectCount: nextJsmProjectCount,
+      ...(nextJsmProjectCount === 0 ? {
+        opsDashboardTypes: [],
+        opsDashboardPrompt: '',
+      } : {}),
     });
+
+    if (nextJsmProjectCount === 0 && openDashboardPicker === 'ops') {
+      setOpenDashboardPicker(null);
+    }
   };
 
   const updateSoftwareProject = (index, field, value) => {
@@ -2265,28 +2317,29 @@ function App() {
                 </div>
                 {renderItsmCountField('incidentRequestsPerProject', 'Incidents', 1)}
                 {renderItsmCountField('serviceRequestsPerProject', 'Service Requests', 1)}
-                {renderItsmCountField('changeRequestsPerProject', 'Changes', 0)}
-                {renderItsmCountField('problemRequestsPerProject', 'Problems', 0)}
+                {renderItsmCountField('changeRequestsPerProject', 'Changes', 1)}
+                {renderItsmCountField('problemRequestsPerProject', 'Problems', 1)}
                 <button type="button" onClick={removeJsmProject} style={removeButtonStyle}>
                   Remove
                 </button>
               </div>
             </div>
           ))}
-          <div style={{ ...optionalSectionStyle, marginTop: '16px', marginBottom: 0 }}>
-            <div style={{ ...fieldStyle, marginBottom: 0 }}>
-              <label style={labelStyle}>Dashboard - Ops / Service Management</label>
-              {renderDashboardMultiDropdown({
-                id: 'ops',
-                options: opsDashboardOptions,
-                selectedValues: form.opsDashboardTypes,
-                fieldName: 'opsDashboardTypes',
-                promptFieldName: 'opsDashboardPrompt',
-                disabled: selectedJsmProjectCount === 0,
-                emptyLabel: 'Choose service management dashboards',
-              })}
+          {selectedJsmProjectCount > 0 && (
+            <div style={{ ...optionalSectionStyle, marginTop: '16px', marginBottom: 0 }}>
+              <div style={{ ...fieldStyle, marginBottom: 0 }}>
+                <label style={labelStyle}>Dashboard - Ops / Service Management</label>
+                {renderDashboardMultiDropdown({
+                  id: 'ops',
+                  options: opsDashboardOptions,
+                  selectedValues: form.opsDashboardTypes,
+                  fieldName: 'opsDashboardTypes',
+                  promptFieldName: 'opsDashboardPrompt',
+                  emptyLabel: 'Choose service management dashboards',
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div style={sectionStyle}>
@@ -2343,20 +2396,21 @@ function App() {
               </div>
             </div>
           ))}
-          <div style={{ ...optionalSectionStyle, marginTop: '16px', marginBottom: 0 }}>
-            <div style={{ ...fieldStyle, marginBottom: 0 }}>
-              <label style={labelStyle}>Dashboard - Software</label>
-              {renderDashboardMultiDropdown({
-                id: 'software',
-                options: softwareDashboardOptions,
-                selectedValues: form.softwareDashboardTypes,
-                fieldName: 'softwareDashboardTypes',
-                promptFieldName: 'softwareDashboardPrompt',
-                disabled: selectedSoftwareProjectCount === 0,
-                emptyLabel: 'Choose software dashboards',
-              })}
+          {selectedSoftwareProjectCount > 0 && (
+            <div style={{ ...optionalSectionStyle, marginTop: '16px', marginBottom: 0 }}>
+              <div style={{ ...fieldStyle, marginBottom: 0 }}>
+                <label style={labelStyle}>Dashboard - Software</label>
+                {renderDashboardMultiDropdown({
+                  id: 'software',
+                  options: softwareDashboardOptions,
+                  selectedValues: form.softwareDashboardTypes,
+                  fieldName: 'softwareDashboardTypes',
+                  promptFieldName: 'softwareDashboardPrompt',
+                  emptyLabel: 'Choose software dashboards',
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <button
